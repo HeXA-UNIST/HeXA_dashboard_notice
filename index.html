@@ -69,7 +69,7 @@
             font-family: inherit;
             position: absolute;
             width: 100%;
-            transition: transform 0.5s linear;
+            will-change: transform;
         }
 
         /* 스크롤 중 가독성을 위한 여백 */
@@ -134,23 +134,60 @@
     </div>
 
     <script>
+        // DOM 캐시: 반복 조회를 줄여 저사양 환경에서 렌더링/레이아웃 부하를 완화
+        const elements = {
+            temp: document.getElementById('temp'),
+            desc: document.getElementById('desc'),
+            feels: document.getElementById('feels'),
+            uv: document.getElementById('uv'),
+            dust: document.getElementById('dust'),
+            wind: document.getElementById('wind'),
+            hourly: document.getElementById('hourly'),
+            services: document.getElementById('services'),
+            cpuTemp: document.getElementById('cpu_temp'),
+            cpu: document.getElementById('cpu'),
+            ram: document.getElementById('ram'),
+            net: document.getElementById('net'),
+            clock: document.getElementById('clock'),
+            noticeContent: document.getElementById('notice-content'),
+            noticeContainer: document.querySelector('.notice-container')
+        };
+
         let scrollY = 0;
-        let scrollInterval = null;
-        let lastNoticeRaw = ''; // 같은 공지를 반복 렌더링하지 않기 위한 캐시
+        let scrollRafId = null;
+        let lastFrameTime = 0;
+
+        // 변경 감지 렌더링용 캐시: 데이터가 같으면 DOM 업데이트를 건너뜀
+        let lastNoticeRaw = '';
+        let lastWeatherKey = '';
+        let lastServicesKey = '';
+        let lastSystemKey = '';
+
+        const SCROLL_SPEED_PX_PER_SEC = 16;
+
+        function autoScrollFrame(timestamp) {
+            if (!lastFrameTime) lastFrameTime = timestamp;
+            const deltaSec = (timestamp - lastFrameTime) / 1000;
+            lastFrameTime = timestamp;
+
+            const limit = elements.noticeContent.scrollHeight - elements.noticeContainer.offsetHeight;
+            if (limit > 0) {
+                scrollY += SCROLL_SPEED_PX_PER_SEC * deltaSec;
+                if (scrollY > limit + 60) scrollY = -20;
+                elements.noticeContent.style.transform = `translateY(${-scrollY}px)`;
+            } else {
+                scrollY = 0;
+                elements.noticeContent.style.transform = 'translateY(0px)';
+            }
+
+            scrollRafId = requestAnimationFrame(autoScrollFrame);
+        }
 
         function startAutoScroll() {
-            const container = document.querySelector('.notice-container');
-            const content = document.getElementById('notice-content');
-            if (scrollInterval) clearInterval(scrollInterval);
-
-            scrollInterval = setInterval(() => {
-                const limit = content.scrollHeight - container.offsetHeight;
-                if (limit > 0) {
-                    scrollY += 0.8;
-                    if (scrollY > limit + 60) scrollY = -20;
-                    content.style.transform = `translateY(${-scrollY}px)`;
-                }
-            }, 50);
+            if (scrollRafId) cancelAnimationFrame(scrollRafId);
+            scrollY = 0;
+            lastFrameTime = 0;
+            scrollRafId = requestAnimationFrame(autoScrollFrame);
         }
 
         async function fetchJson(url) {
@@ -162,14 +199,28 @@
         async function updateWeather() {
             try {
                 const w = await fetchJson('/api/weather');
-                document.getElementById('temp').innerText = w.temp + '°';
-                document.getElementById('desc').innerText = w.desc;
-                document.getElementById('feels').innerText = w.feels;
-                document.getElementById('uv').innerText = w.uv;
-                document.getElementById('dust').innerText = w.dust;
-                document.getElementById('wind').innerText = w.wind;
 
-                document.getElementById('hourly').innerHTML = w.hourly.map(h => `
+                // 변경 감지: 동일 payload면 렌더 스킵해 CPU/레이아웃 비용 절감
+                const weatherKey = JSON.stringify({
+                    temp: w.temp,
+                    desc: w.desc,
+                    feels: w.feels,
+                    uv: w.uv,
+                    dust: w.dust,
+                    wind: w.wind,
+                    hourly: w.hourly
+                });
+                if (weatherKey === lastWeatherKey) return;
+                lastWeatherKey = weatherKey;
+
+                elements.temp.innerText = w.temp + '°';
+                elements.desc.innerText = w.desc;
+                elements.feels.innerText = w.feels;
+                elements.uv.innerText = w.uv;
+                elements.dust.innerText = w.dust;
+                elements.wind.innerText = w.wind;
+
+                elements.hourly.innerHTML = w.hourly.map(h => `
                     <div class="hour-item">
                         <div style="opacity:.5">${h.time}</div>
                         <div class="rain-val">${h.rain}</div>
@@ -182,7 +233,13 @@
         async function updateServices() {
             try {
                 const data = await fetchJson('/api/services');
-                document.getElementById('services').innerHTML = data.services.map(s => `
+
+                // 변경 감지: 동일 상태면 카드 재생성을 생략
+                const servicesKey = JSON.stringify(data.services);
+                if (servicesKey === lastServicesKey) return;
+                lastServicesKey = servicesKey;
+
+                elements.services.innerHTML = data.services.map(s => `
                     <div class="svc-card ${s.status === 'Online' ? 'online-bg' : 'offline-bg'}">
                         <span style="font-size: 0.9rem;">${s.name}</span>
                         <div class="status-led ${s.status === 'Online' ? 'online' : 'offline'}"></div>
@@ -194,10 +251,16 @@
         async function updateSystem() {
             try {
                 const data = await fetchJson('/api/system');
-                document.getElementById('cpu_temp').innerText = data.system.cpu_temp + '°C';
-                document.getElementById('cpu').innerText = data.system.cpu + '%';
-                document.getElementById('ram').innerText = data.system.ram + '%';
-                document.getElementById('net').innerText = data.system.ping;
+
+                // 변경 감지: 값이 같으면 텍스트 노드 업데이트를 생략
+                const systemKey = JSON.stringify(data.system);
+                if (systemKey === lastSystemKey) return;
+                lastSystemKey = systemKey;
+
+                elements.cpuTemp.innerText = data.system.cpu_temp + '°C';
+                elements.cpu.innerText = data.system.cpu + '%';
+                elements.ram.innerText = data.system.ram + '%';
+                elements.net.innerText = data.system.ping;
             } catch (e) { console.error(e); }
         }
 
@@ -207,7 +270,7 @@
 
                 // 공지 내용이 바뀐 경우에만 마크다운 렌더링/스크롤 재시작
                 if (data.notice !== lastNoticeRaw) {
-                    document.getElementById('notice-content').innerHTML = marked.parse(data.notice);
+                    elements.noticeContent.innerHTML = marked.parse(data.notice);
                     lastNoticeRaw = data.notice;
                     setTimeout(startAutoScroll, 1500);
                 }
@@ -231,7 +294,7 @@
 
         setInterval(() => {
             const now = new Date();
-            document.getElementById('clock').innerText = now.toTimeString().split(' ')[0];
+            elements.clock.innerText = now.toTimeString().split(' ')[0];
         }, 1000);
     </script>
 </body>
