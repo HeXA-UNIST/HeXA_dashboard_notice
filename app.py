@@ -6,11 +6,14 @@ import datetime
 import os
 import time
 import threading
+import atexit
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 app = Flask(__name__)
+app.json.ensure_ascii = False  # JSON 응답에서 한글이 깨지지 않도록 설정
+app.json.sort_keys = False  # JSON 응답에서 키 순서 유지
 
 GITHUB_NOTICE_URL = "https://raw.githubusercontent.com/HeXA-UNIST/heXA_dashboard_notice/main/notice.md"
 
@@ -39,10 +42,37 @@ def create_http_session():
 
 HTTP = create_http_session()
 
+# 서비스 상태 체크용 스레드풀 전역 재사용: 요청마다 executor 생성/해제 비용 제거
+SERVICE_POOL_SIZE = min(len(SERVICES), 8) if SERVICES else 1
+SERVICE_EXECUTOR = ThreadPoolExecutor(max_workers=SERVICE_POOL_SIZE)
+
+
+@atexit.register
+def shutdown_executors():
+    SERVICE_EXECUTOR.shutdown(wait=False)
+
 
 # 간단한 인메모리 TTL 캐시: 동일 데이터의 반복 외부 호출을 줄임
 CACHE = {}
 CACHE_LOCK = threading.Lock()
+
+# GitHub notice 전용 메타데이터
+# - etag: 마지막으로 정상 수신한 응답의 ETag 값
+# - last_text: 마지막으로 정상 수신한 공지 본문
+#
+# 동작 개요:
+# 1) etag가 있으면 다음 요청에 If-None-Match 헤더를 붙여 "변경 여부만" 확인
+# 2) 서버가 304(Not Modified)를 주면 last_text를 재사용(본문 재다운로드 없음)
+# 3) 서버가 200을 주면 새 본문/ETag로 갱신
+#
+# 효과:
+# - 공지가 자주 바뀌지 않을 때 네트워크 트래픽 및 원격 처리 부담을 크게 줄임
+# - 일시 네트워크 장애 시에도 last_text로 서비스 연속성 확보
+NOTICE_META = {
+    "etag": None,
+    "last_text": ""
+}
+NOTICE_META_LOCK = threading.Lock()
 
 
 def get_cached(key, ttl_seconds, fetcher):
@@ -112,10 +142,38 @@ def get_naver_weather():
 
 def get_github_notice():
     try:
-        res = HTTP.get(GITHUB_NOTICE_URL, timeout=3)
-        return res.text if res.status_code == 200 else "공지사항 파일을 찾을 수 없습니다."
+        # 공유 메타데이터는 잠금 하에 읽어 스레드 간 일관성 보장
+        with NOTICE_META_LOCK:
+            etag = NOTICE_META["etag"]
+            cached_text = NOTICE_META["last_text"]
+
+        # 기존 ETag가 있으면 조건부 요청(If-None-Match)으로 변경 여부만 확인
+        headers = {}
+        if etag:
+            headers["If-None-Match"] = etag
+
+        res = HTTP.get(GITHUB_NOTICE_URL, timeout=3, headers=headers)
+
+        # 본문 변경이 없으면 304가 내려오므로, 기존 캐시 텍스트를 즉시 반환
+        # (네트워크 왕복은 있지만 본문 다운로드/파싱 비용은 없음)
+        if res.status_code == 304 and cached_text:
+            return cached_text
+
+        # 본문이 변경되었거나 최초 요청이면 200 수신
+        # 이때 ETag/본문을 같이 갱신해 다음 요청부터 조건부 재검증 가능
+        if res.status_code == 200:
+            with NOTICE_META_LOCK:
+                NOTICE_META["etag"] = res.headers.get("ETag")
+                NOTICE_META["last_text"] = res.text
+            return res.text
+
+        # 비정상 상태코드(예: 404/5xx)에서는 기존 성공 캐시를 우선 반환해 가용성 유지
+        return cached_text if cached_text else "공지사항 파일을 찾을 수 없습니다."
     except Exception:
-        return "GitHub 연결에 실패했습니다."
+        # 예외 상황(타임아웃/네트워크 오류)에서도 마지막 성공 값을 반환하여 안정성 확보
+        with NOTICE_META_LOCK:
+            cached_text = NOTICE_META["last_text"]
+        return cached_text if cached_text else "GitHub 연결에 실패했습니다."
 
 def get_cpu_temp():
     res = os.popen('vcgencmd measure_temp').readline()
@@ -131,10 +189,8 @@ def check_service_status(service):
 
 
 def get_service_statuses():
-    # 병렬 체크: 서비스 개수가 늘어도 응답 지연을 최소화
-    max_workers = min(len(SERVICES), 8) if SERVICES else 1
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        return list(executor.map(check_service_status, SERVICES))
+    # 병렬 체크: 전역 executor를 재사용해 생성/해제 오버헤드 제거
+    return list(SERVICE_EXECUTOR.map(check_service_status, SERVICES))
 
 
 def get_system_metrics():
