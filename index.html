@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>HeXA Smart Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown-dark.min.css">
+
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.08);
+            --glass-strong: rgba(255, 255, 255, 0.15);
+            --border: rgba(255, 255, 255, 0.18);
+            --accent: #00d2ff;
+            --ok: #00ff88;
+            --bad: #ff4d4d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            height: 100vh; font-family: 'Pretendard', sans-serif;
+            background: radial-gradient(circle at top right, #1e293b, #000000);
+            color: white; overflow: hidden; display: flex; justify-content: center; align-items: center;
+        }
+
+        .dashboard {
+            width: 96vw; height: 92vh; display: grid;
+            grid-template-columns: 1.1fr 1fr; gap: 25px; padding-top: 60px;
+        }
+        .glass {
+            background: var(--glass); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--border); border-radius: 35px; padding: 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+
+        .clock {
+            position: absolute; top: 25px; left: 50%; transform: translateX(-50%);
+            font-size: 3.2rem; font-weight: 200; color: var(--accent); letter-spacing: 2px;
+            text-shadow: 0 0 20px rgba(0,210,255,0.4);
+        }
+
+        /* ===== 좌측: 날씨 ===== */
+        .left-col { display: flex; flex-direction: column; gap: 20px; }
+        .hero-weather { text-align: center; margin-top: 20px; }
+        .hero-weather h1 { font-size: 8rem; font-weight: 100; margin: 10px 0; }
+
+        .hourly-box { display: flex; justify-content: space-between; padding-bottom: 20px; }
+        .hour-item { text-align: center; font-size: 1rem; }
+        .rain-val { color: var(--accent); font-size: 1rem; font-weight: bold; margin-top: 3px; }
+
+        .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .detail-tile { background: rgba(255,255,255,0.05); padding: 18px; border-radius: 25px; border: 1px solid rgba(255,255,255,0.05); }
+        .label_big { font-size: 1.25rem; margin-top:50px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+        .label { font-size: 1rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+        .value { font-size: 1.3rem; font-weight: 500; margin-top: 8px; }
+
+        /* ===== 우측: 공지(GitHub 스타일 적용) ===== */
+        .right-col { display: flex; flex-direction: column; gap: 25px; margin-top: 50px; height: calc(100% - 50px); }
+
+        .notice-glass { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .notice-container {
+            margin-top: 15px; overflow: hidden; position: relative; flex: 1;
+        }
+
+        /* GitHub 스타일 커스텀 오버라이드 */
+        .markdown-body {
+            background-color: transparent !important; /* 배경 투명화 */
+            color: #e6edf3 !important;
+            font-family: inherit;
+            position: absolute;
+            width: 100%;
+            transition: transform 0.5s linear;
+        }
+
+        /* 스크롤 중 가독성을 위한 여백 */
+        .markdown-body { padding-bottom: 100px; }
+
+        /* ===== 서비스 모니터 ===== */
+        .monitor-glass { flex-shrink: 0; height: auto; }
+        .monitor-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .svc-card {
+            padding: 14px; border-radius: 20px; display: flex; justify-content: space-between;
+            align-items: center; border: 1px solid var(--border); transition: 0.3s;
+        }
+        .online-bg { background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,0,0,0.2)); border-color: rgba(0,255,136,0.3); }
+        .offline-bg { background: linear-gradient(135deg, rgba(255,77,77,0.1), rgba(0,0,0,0.2)); border-color: rgba(255,77,77,0.3); }
+        .status-led { width: 10px; height: 10px; border-radius: 50%; }
+        .online { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+        .offline { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+
+        .sys-bar { display: flex; justify-content: space-around; padding-top: 15px; margin-top: 15px; border-top: 1px solid var(--border); font-size: 0.85rem; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div class="clock" id="clock">00:00:00</div>
+    <div class="dashboard">
+
+        <div class="left-col">
+            <div class="hero-weather" >
+                <p class="label_big">ULSAN · UNIST</p>
+                <h1 id="temp" style="margin-top:30px;">--°</h1>
+                <p id="desc" style="font-weight: 300; opacity: 0.7; margin-top:30px;" class="label_big">Loading...</p>
+            </div>
+            <div class="glass" style="margin-top: auto;">
+                <div class="hourly-box" id="hourly"></div>
+                <div class="detail-grid">
+                    <div class="detail-tile"><p class="label">체감 온도</p><p class="value" id="feels">-</p></div>
+                    <div class="detail-tile"><p class="label">자외선</p><p class="value" id="uv">-</p></div>
+                    <div class="detail-tile"><p class="label">미세먼지</p><p class="value" id="dust">-</p></div>
+                    <div class="detail-tile"><p class="label">풍속</p><p class="value" id="wind">-</p></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-col">
+            <div class="glass notice-glass">
+                <p class="label">Notices</p>
+                <div class="notice-container">
+                    <div id="notice-content" class="markdown-body">불러오는 중...</div>
+                </div>
+            </div>
+
+            <div class="glass monitor-glass">
+                <p class="label" style="margin-bottom:15px;">Service Monitor</p>
+                <div class="monitor-section" id="services"></div>
+                <div class="sys-bar">
+                    <span>CPU TEMP <b id="cpu_temp">0°C</b></span>
+                    <span>CPU <b id="cpu">0%</b></span>
+                    <span>RAM <b id="ram">0%</b></span>
+                    <span>NET <b id="net">-</b></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scrollY = 0;
+        let scrollInterval = null;
+        let lastNoticeUpdateTime = 0; // 마지막 공지 업데이트 시간을 저장
+
+        function startAutoScroll() {
+            const container = document.querySelector('.notice-container');
+            const content = document.getElementById('notice-content');
+            if (scrollInterval) clearInterval(scrollInterval);
+
+            scrollInterval = setInterval(() => {
+                const limit = content.scrollHeight - container.offsetHeight;
+                if (limit > 0) {
+                    scrollY += 0.8;
+                    if (scrollY > limit + 60) scrollY = -20;
+                    content.style.transform = `translateY(${-scrollY}px)`;
+                }
+            }, 50);
+        }
+
+        async function update() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+
+                // 1. 날씨 및 시스템 정보 업데이트 (기존처럼 30초마다)
+                const w = data.weather;
+                document.getElementById('temp').innerText = w.temp + '°';
+                document.getElementById('desc').innerText = w.desc;
+                document.getElementById('feels').innerText = w.feels;
+                document.getElementById('uv').innerText = w.uv;
+                document.getElementById('dust').innerText = w.dust;
+                document.getElementById('wind').innerText = w.wind;
+
+                document.getElementById('hourly').innerHTML = w.hourly.map(h => `
+                    <div class="hour-item">
+                        <div style="opacity:.5">${h.time}</div>
+                        <div class="rain-val">${h.rain}</div>
+                        <div style="margin-top:6px;font-weight:600">${h.temp}°</div>
+                    </div>
+                `).join('');
+
+                document.getElementById('services').innerHTML = data.services.map(s => `
+                    <div class="svc-card ${s.status === 'Online' ? 'online-bg' : 'offline-bg'}">
+                        <span style="font-size: 0.9rem;">${s.name}</span>
+                        <div class="status-led ${s.status === 'Online' ? 'online' : 'offline'}"></div>
+                    </div>
+                `).join('');
+
+                document.getElementById('cpu_temp').innerText = data.system.cpu_temp + '°C';
+                document.getElementById('cpu').innerText = data.system.cpu + '%';
+                document.getElementById('ram').innerText = data.system.ram + '%';
+                document.getElementById('net').innerText = data.system.ping;
+
+                // 2. 공지사항 업데이트 (1시간 = 3,600,000ms 마다 실행)
+                const now = Date.now();
+                if (now - lastNoticeUpdateTime >= 3600000) {
+                    console.log("공지사항 업데이트 중...");
+                    document.getElementById('notice-content').innerHTML = marked.parse(data.notice);
+                    lastNoticeUpdateTime = now;
+
+                    // 마크다운 렌더링 후 스크롤 재시작
+                    setTimeout(startAutoScroll, 1500);
+                }
+
+            } catch (e) { console.error(e); }
+        }
+
+        // 초기 실행 및 인터벌 설정
+        setInterval(update, 30000); // 전체 데이터 fetch는 30초 유지
+        update();
+
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toTimeString().split(' ')[0];
+        }, 1000);
+    </script>
+</body>
+</html>
