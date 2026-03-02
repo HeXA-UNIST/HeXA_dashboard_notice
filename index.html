@@ -136,7 +136,7 @@
     <script>
         let scrollY = 0;
         let scrollInterval = null;
-        let lastNoticeUpdateTime = 0; // 마지막 공지 업데이트 시간을 저장
+        let lastNoticeRaw = ''; // 같은 공지를 반복 렌더링하지 않기 위한 캐시
 
         function startAutoScroll() {
             const container = document.querySelector('.notice-container');
@@ -153,13 +153,15 @@
             }, 50);
         }
 
-        async function update() {
-            try {
-                const res = await fetch('/api/data');
-                const data = await res.json();
+        async function fetchJson(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Request failed: ${url}`);
+            return res.json();
+        }
 
-                // 1. 날씨 및 시스템 정보 업데이트 (기존처럼 30초마다)
-                const w = data.weather;
+        async function updateWeather() {
+            try {
+                const w = await fetchJson('/api/weather');
                 document.getElementById('temp').innerText = w.temp + '°';
                 document.getElementById('desc').innerText = w.desc;
                 document.getElementById('feels').innerText = w.feels;
@@ -174,36 +176,58 @@
                         <div style="margin-top:6px;font-weight:600">${h.temp}°</div>
                     </div>
                 `).join('');
+            } catch (e) { console.error(e); }
+        }
 
+        async function updateServices() {
+            try {
+                const data = await fetchJson('/api/services');
                 document.getElementById('services').innerHTML = data.services.map(s => `
                     <div class="svc-card ${s.status === 'Online' ? 'online-bg' : 'offline-bg'}">
                         <span style="font-size: 0.9rem;">${s.name}</span>
                         <div class="status-led ${s.status === 'Online' ? 'online' : 'offline'}"></div>
                     </div>
                 `).join('');
+            } catch (e) { console.error(e); }
+        }
 
+        async function updateSystem() {
+            try {
+                const data = await fetchJson('/api/system');
                 document.getElementById('cpu_temp').innerText = data.system.cpu_temp + '°C';
                 document.getElementById('cpu').innerText = data.system.cpu + '%';
                 document.getElementById('ram').innerText = data.system.ram + '%';
                 document.getElementById('net').innerText = data.system.ping;
-
-                // 2. 공지사항 업데이트 (1시간 = 3,600,000ms 마다 실행)
-                const now = Date.now();
-                if (now - lastNoticeUpdateTime >= 3600000) {
-                    console.log("공지사항 업데이트 중...");
-                    document.getElementById('notice-content').innerHTML = marked.parse(data.notice);
-                    lastNoticeUpdateTime = now;
-
-                    // 마크다운 렌더링 후 스크롤 재시작
-                    setTimeout(startAutoScroll, 1500);
-                }
-
             } catch (e) { console.error(e); }
         }
 
-        // 초기 실행 및 인터벌 설정
-        setInterval(update, 30000); // 전체 데이터 fetch는 30초 유지
-        update();
+        async function updateNotice() {
+            try {
+                const data = await fetchJson('/api/notice');
+
+                // 공지 내용이 바뀐 경우에만 마크다운 렌더링/스크롤 재시작
+                if (data.notice !== lastNoticeRaw) {
+                    document.getElementById('notice-content').innerHTML = marked.parse(data.notice);
+                    lastNoticeRaw = data.notice;
+                    setTimeout(startAutoScroll, 1500);
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // API 분리 후 주기 분리:
+        // - weather: 외부 스크래핑 비용이 커서 5분
+        // - services: 상태 확인 목적이라 30초
+        // - system: 로컬 지표 중심이라 5초
+        // - notice: 변경 빈도 낮아 1시간
+        updateWeather();
+        updateServices();
+        updateSystem();
+        updateNotice();
+
+        setInterval(updateWeather, 300000);
+        setInterval(updateServices, 30000);
+        setInterval(updateSystem, 5000);
+        setInterval(updateNotice, 3600000);
 
         setInterval(() => {
             const now = new Date();
