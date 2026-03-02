@@ -20,7 +20,6 @@ GITHUB_NOTICE_URL = "https://raw.githubusercontent.com/HeXA-UNIST/heXA_dashboard
 SERVICES = [
     {"name": "Heartbeat", "url": "https://www.google.com"},
     {"name": "밥먹어U", "url": "https://meal.hexa.pro/mainpage/data", "url_type": "json"},
-    {"name": "test", "url": "https://meal.hexa.pro/mainpage/dat", "url_type": "json"},
     {"name": "BUS HeXA", "url": "https://bus.hexa.pro"},
 ]
 
@@ -197,7 +196,7 @@ def check_service_status(service):
         url_type = service.get("url_type", "basic")
 
         # 1) url_type과 무관하게 먼저 HTTP 응답 성공 여부를 확인
-        res = HTTP.get(service['url'], timeout=1)
+        res = HTTP.get(service['url'], timeout=2)
         if res.status_code != 200:
             return {"name": service['name'], "status": "Offline"}
 
@@ -234,7 +233,7 @@ def get_system_metrics():
 
     return {
         "cpu": psutil.cpu_percent(),
-        "cpu_temp": "None",
+        "cpu_temp": get_cpu_temp(),
         "ram": psutil.virtual_memory().percent,
         "ping": ping,
         "time": datetime.datetime.now().strftime("%H:%M:%S")
