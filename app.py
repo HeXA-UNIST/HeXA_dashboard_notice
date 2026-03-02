@@ -20,8 +20,8 @@ GITHUB_NOTICE_URL = "https://raw.githubusercontent.com/HeXA-UNIST/heXA_dashboard
 SERVICES = [
     {"name": "Heartbeat", "url": "https://www.google.com"},
     {"name": "밥먹어U", "url": "https://meal.hexa.pro/mainpage/data", "url_type": "json"},
+    {"name": "test", "url": "https://meal.hexa.pro/mainpage/dat", "url_type": "json"},
     {"name": "BUS HeXA", "url": "https://bus.hexa.pro"},
-    {"name": "Service4", "url": "https://www.google.com"}
 ]
 
 
@@ -234,7 +234,7 @@ def get_system_metrics():
 
     return {
         "cpu": psutil.cpu_percent(),
-        "cpu_temp": get_cpu_temp(),
+        "cpu_temp": "None",
         "ram": psutil.virtual_memory().percent,
         "ping": ping,
         "time": datetime.datetime.now().strftime("%H:%M:%S")
