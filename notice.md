@@ -6,12 +6,12 @@ Hello HeXA!
 
 ### 📢 Test_notice
 
-1.  **Test_title_1**
+1. **Test_title_1**
     * asdf
-    * qwer 
+    * qwer
     * zxcv
 
-2.  **Test_title_2**
+2. **Test_title_2**
     * asdf
     * qwer
     * zxcv

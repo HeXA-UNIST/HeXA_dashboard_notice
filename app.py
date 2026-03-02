@@ -19,8 +19,8 @@ GITHUB_NOTICE_URL = "https://raw.githubusercontent.com/HeXA-UNIST/heXA_dashboard
 
 SERVICES = [
     {"name": "Heartbeat", "url": "https://www.google.com"},
-    {"name": "Service2", "url": "https://www.google.com"},
-    {"name": "Service3", "url": "https://www.google.com"},
+    {"name": "밥먹어U", "url": "https://meal.hexa.pro/mainpage/data", "url_type": "json"},
+    {"name": "BUS HeXA", "url": "https://bus.hexa.pro"},
     {"name": "Service4", "url": "https://www.google.com"}
 ]
 
@@ -180,9 +180,42 @@ def get_cpu_temp():
     return res.replace("temp=","").replace("'C\n","")
 
 
+def is_non_empty_json_payload(payload):
+    # JSON 내용물이 "비어 있는지" 판별
+    # - dict/list: 길이가 1 이상이어야 유효
+    # - str: 공백 제거 후 길이가 1 이상이어야 유효
+    # - number/bool: null(None)만 아니면 내용이 있는 것으로 간주
+    if isinstance(payload, (dict, list)):
+        return len(payload) > 0
+    if isinstance(payload, str):
+        return len(payload.strip()) > 0
+    return payload is not None
+
+
 def check_service_status(service):
     try:
-        status = "Online" if HTTP.get(service['url'], timeout=1).status_code == 200 else "Offline"
+        url_type = service.get("url_type", "basic")
+
+        # 1) url_type과 무관하게 먼저 HTTP 응답 성공 여부를 확인
+        res = HTTP.get(service['url'], timeout=1)
+        if res.status_code != 200:
+            return {"name": service['name'], "status": "Offline"}
+
+        # 2) 200이 확인된 뒤, url_type별 추가 검증 수행
+        # json 전용 healthcheck:
+        # 1) Content-Type에 application/json 포함
+        # 2) JSON 파싱 성공
+        # 3) 파싱 결과가 비어 있지 않음
+        if url_type == "json":
+            content_type = res.headers.get("Content-Type", "").lower()
+            if "application/json" not in content_type:
+                return {"name": service['name'], "status": "Offline"}
+
+            payload = res.json()
+            if not is_non_empty_json_payload(payload):
+                return {"name": service['name'], "status": "Offline"}
+
+        status = "Online"
     except Exception:
         status = "Offline"
     return {"name": service['name'], "status": status}
