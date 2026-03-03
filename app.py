@@ -1,5 +1,6 @@
 import niquests
 from bs4 import BeautifulSoup
+import lxml
 from flask import Flask, render_template, jsonify
 import psutil
 import datetime
@@ -132,7 +133,7 @@ def get_naver_weather():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         res = HTTP.get(url, headers=headers, timeout=3)
-        soup = BeautifulSoup(res.text, 'html.parser')
+        soup = BeautifulSoup(res.text, 'lxml')
 
         # 온도 및 상태
         temp_node = soup.select_one('.temperature_text strong')
@@ -353,8 +354,8 @@ def get_system_metrics():
 
 @app.route('/api/weather')
 def get_weather_api():
-    # 외부 스크래핑 부하 절감을 위해 5분 캐시
-    return jsonify(get_cached("weather", 300, get_naver_weather))
+    # 외부 스크래핑 부하 절감을 위해 30분 캐시
+    return jsonify(get_cached("weather", 1800, get_naver_weather))
 
 
 @app.route('/api/notice')
