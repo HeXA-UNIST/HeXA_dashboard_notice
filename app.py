@@ -336,7 +336,7 @@ def get_system_metrics():
 
     return {
         "cpu": psutil.cpu_percent(),
-        "cpu_temp": "0",
+        "cpu_temp": get_cpu_temp(),
         "ram": psutil.virtual_memory().percent,
         "ping": ping,
         "time": datetime.datetime.now().strftime("%H:%M:%S")
