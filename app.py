@@ -7,6 +7,9 @@ import os
 import time
 import threading
 import atexit
+import sys
+import logging
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -14,6 +17,40 @@ from urllib3.util.retry import Retry
 app = Flask(__name__)
 app.json.ensure_ascii = False  # JSON 응답에서 한글이 깨지지 않도록 설정
 app.json.sort_keys = False  # JSON 응답에서 키 순서 유지
+
+# python app.py --debug 로 실행하면 파일 로그를 남긴다.
+# 로그 파일명은 실행 시각(run_YYYYMMDD_HHMMSS.log)으로 생성된다.
+DEBUG_LOG_MODE = "--debug" in sys.argv
+
+
+def configure_debug_logging():
+    if not DEBUG_LOG_MODE:
+        return
+
+    log_dir = Path(__file__).resolve().parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    run_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = log_dir / f"run_{run_ts}.log"
+
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    app.logger.setLevel(logging.DEBUG)
+    app.logger.addHandler(file_handler)
+
+    werkzeug_logger = logging.getLogger("werkzeug")
+    werkzeug_logger.setLevel(logging.INFO)
+    werkzeug_logger.addHandler(file_handler)
+
+    app.logger.info("Debug logging enabled: %s", log_path)
+
+
+configure_debug_logging()
 
 GITHUB_NOTICE_URL = "https://raw.githubusercontent.com/HeXA-UNIST/heXA_dashboard_notice/main/notice.md"
 
@@ -91,16 +128,28 @@ def get_cached(key, ttl_seconds, fetcher):
 
 
 def get_naver_weather():
+    url = "https://search.naver.com/search.naver?query=울산+언양읍+날씨"
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        url = "https://search.naver.com/search.naver?query=울산+언양읍+날씨"
         res = HTTP.get(url, headers=headers, timeout=3)
         soup = BeautifulSoup(res.text, 'html.parser')
 
         # 온도 및 상태
-        temp = soup.select_one('.temperature_text strong').text.replace('현재 온도', '').replace('°', '').strip()
-        desc = soup.select_one('.before_slash').text.strip()
+        temp_node = soup.select_one('.temperature_text strong')
+        desc_node = soup.select_one('.before_slash')
+        if not temp_node or not desc_node:
+            app.logger.warning(
+                "Weather selector mismatch: url=%s status=%s content_type=%s body_len=%s",
+                url,
+                res.status_code,
+                res.headers.get("Content-Type", ""),
+                len(res.text),
+            )
+            return {"temp": "N/A", "desc": "SelectorError", "hourly": []}
+
+        temp = temp_node.text.replace('현재 온도', '').replace('°', '').strip()
+        desc = desc_node.text.strip()
 
         # 상세 지표 (풍속 추출 강화)
         summary_items = soup.select('.summary_list .sort')
@@ -135,11 +184,19 @@ def get_naver_weather():
             "uv": metrics.get("자외선", "-"), "dust": metrics.get("미세먼지", "-"),
             "hourly": hourly_data
         }
-    except Exception:
+    except Exception as exc:
+        # --debug 모드에서 크롤링 실패 원인을 파일 로그로 남긴다.
+        app.logger.exception(
+            "Weather crawling failed: url=%s error_type=%s error=%s",
+            url,
+            type(exc).__name__,
+            exc,
+        )
         return {"temp": "N/A", "desc": "Error", "hourly": []}
 
 
 def get_github_notice():
+    request_etag = None
     try:
         # 공유 메타데이터는 잠금 하에 읽어 스레드 간 일관성 보장
         with NOTICE_META_LOCK:
@@ -150,6 +207,7 @@ def get_github_notice():
         headers = {}
         if etag:
             headers["If-None-Match"] = etag
+            request_etag = etag
 
         res = HTTP.get(GITHUB_NOTICE_URL, timeout=3, headers=headers)
 
@@ -167,9 +225,24 @@ def get_github_notice():
             return res.text
 
         # 비정상 상태코드(예: 404/5xx)에서는 기존 성공 캐시를 우선 반환해 가용성 유지
+        app.logger.warning(
+            "GitHub notice non-success: url=%s status=%s sent_etag=%s recv_etag=%s body_len=%s",
+            GITHUB_NOTICE_URL,
+            res.status_code,
+            request_etag,
+            res.headers.get("ETag"),
+            len(res.text or ""),
+        )
         return cached_text if cached_text else "공지사항 파일을 찾을 수 없습니다."
-    except Exception:
+    except Exception as exc:
         # 예외 상황(타임아웃/네트워크 오류)에서도 마지막 성공 값을 반환하여 안정성 확보
+        app.logger.exception(
+            "GitHub notice fetch failed: url=%s sent_etag=%s error_type=%s error=%s",
+            GITHUB_NOTICE_URL,
+            request_etag,
+            type(exc).__name__,
+            exc,
+        )
         with NOTICE_META_LOCK:
             cached_text = NOTICE_META["last_text"]
         return cached_text if cached_text else "GitHub 연결에 실패했습니다."
@@ -192,12 +265,20 @@ def is_non_empty_json_payload(payload):
 
 
 def check_service_status(service):
+    service_name = service.get("name", "unknown")
+    service_url = service.get("url", "")
+    url_type = service.get("url_type", "basic")
     try:
-        url_type = service.get("url_type", "basic")
-
         # 1) url_type과 무관하게 먼저 HTTP 응답 성공 여부를 확인
-        res = HTTP.get(service['url'], timeout=2)
+        res = HTTP.get(service_url, timeout=2)
         if res.status_code != 200:
+            app.logger.warning(
+                "Service health non-200: name=%s url=%s status=%s url_type=%s",
+                service_name,
+                service_url,
+                res.status_code,
+                url_type,
+            )
             return {"name": service['name'], "status": "Offline"}
 
         # 2) 200이 확인된 뒤, url_type별 추가 검증 수행
@@ -208,14 +289,36 @@ def check_service_status(service):
         if url_type == "json":
             content_type = res.headers.get("Content-Type", "").lower()
             if "application/json" not in content_type:
+                app.logger.warning(
+                    "Service json content-type mismatch: name=%s url=%s content_type=%s status=%s",
+                    service_name,
+                    service_url,
+                    res.headers.get("Content-Type", ""),
+                    res.status_code,
+                )
                 return {"name": service['name'], "status": "Offline"}
 
             payload = res.json()
             if not is_non_empty_json_payload(payload):
+                app.logger.warning(
+                    "Service json empty payload: name=%s url=%s status=%s payload_type=%s",
+                    service_name,
+                    service_url,
+                    res.status_code,
+                    type(payload).__name__,
+                )
                 return {"name": service['name'], "status": "Offline"}
 
         status = "Online"
-    except Exception:
+    except Exception as exc:
+        app.logger.exception(
+            "Service health check failed: name=%s url=%s url_type=%s error_type=%s error=%s",
+            service_name,
+            service_url,
+            url_type,
+            type(exc).__name__,
+            exc,
+        )
         status = "Offline"
     return {"name": service['name'], "status": status}
 
@@ -233,7 +336,7 @@ def get_system_metrics():
 
     return {
         "cpu": psutil.cpu_percent(),
-        "cpu_temp": get_cpu_temp(),
+        "cpu_temp": "0",
         "ram": psutil.virtual_memory().percent,
         "ping": ping,
         "time": datetime.datetime.now().strftime("%H:%M:%S")
