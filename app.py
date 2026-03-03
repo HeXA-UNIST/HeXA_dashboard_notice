@@ -248,8 +248,17 @@ def get_github_notice():
         return cached_text if cached_text else "GitHub 연결에 실패했습니다."
 
 def get_cpu_temp():
-    res = os.popen('vcgencmd measure_temp').readline()
-    return res.replace("temp=","").replace("'C\n","")
+    # 라즈베리파이 명령이 없거나 출력 파싱에 실패하면 None 반환
+    # (Windows/일반 Debian 테스트 환경에서 안전하게 동작)
+    try:
+        output = os.popen('vcgencmd measure_temp').readline().strip()
+        if not output or "temp=" not in output:
+            return None
+
+        value = output.replace("temp=", "").replace("'C", "").strip()
+        return value if value else None
+    except Exception:
+        return None
 
 
 def is_non_empty_json_payload(payload):
