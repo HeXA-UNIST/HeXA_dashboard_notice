@@ -1,4 +1,4 @@
-import requests
+import niquests
 from bs4 import BeautifulSoup
 from flask import Flask, render_template, jsonify
 import psutil
@@ -11,8 +11,6 @@ import sys
 import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 app = Flask(__name__)
 app.json.ensure_ascii = False  # JSON 응답에서 한글이 깨지지 않도록 설정
@@ -63,16 +61,17 @@ SERVICES = [
 
 # 공용 HTTP 세션: 연결 재사용(keep-alive) + 재시도로 외부 호출 비용/실패율 감소
 def create_http_session():
-    retry = Retry(
+    retry_config = niquests.RetryConfiguration(
         total=2,
         backoff_factor=0.2,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"],
     )
-    adapter = HTTPAdapter(max_retries=retry, pool_connections=20, pool_maxsize=20)
-    session = requests.Session()
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
+    session = niquests.Session(
+        retries=retry_config,
+        pool_connections=20,
+        pool_maxsize=20,
+    )
     return session
 
 
