@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HeXA Smart Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.1/github-markdown-dark.min.css">
@@ -9,7 +10,6 @@
     <style>
         :root {
             --glass: rgba(255, 255, 255, 0.08);
-            --glass-strong: rgba(255, 255, 255, 0.15);
             --border: rgba(255, 255, 255, 0.18);
             --accent: #00d2ff;
             --ok: #00ff88;
@@ -27,6 +27,7 @@
             width: 96vw; height: 92vh; display: grid;
             grid-template-columns: 1.1fr 1fr; gap: 25px; padding-top: 60px;
         }
+
         .glass {
             background: var(--glass); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
             border: 1px solid var(--border); border-radius: 35px; padding: 30px;
@@ -39,44 +40,43 @@
             text-shadow: 0 0 20px rgba(0,210,255,0.4);
         }
 
-        /* ===== 좌측: 날씨 ===== */
+        /* 좌측: 날씨 섹션 */
         .left-col { display: flex; flex-direction: column; gap: 20px; }
         .hero-weather { text-align: center; margin-top: 20px; }
-        .hero-weather h1 { font-size: 8rem; font-weight: 100; margin: 10px 0; }
 
-        .hourly-box { display: flex; justify-content: space-between; padding-bottom: 20px; }
-        .hour-item { text-align: center; font-size: 1rem; }
-        .rain-val { color: var(--accent); font-size: 1rem; font-weight: bold; margin-top: 3px; }
+        .location-header {
+            display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;
+        }
+        .hexa-logo { width: 45px; height: 45px; filter: drop-shadow(0 0 8px var(--accent)); }
 
-        .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
-        .detail-tile { background: rgba(255,255,255,0.05); padding: 18px; border-radius: 25px; border: 1px solid rgba(255,255,255,0.05); }
-        .label_big { font-size: 1.25rem; margin-top:50px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
-        .label { font-size: 1rem; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
-        .value { font-size: 1.3rem; font-weight: 500; margin-top: 8px; }
+        .weather-main { display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+        .weather-anim { font-size: 5.5rem; animation: float 3s ease-in-out infinite; margin-bottom: -10px; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
 
-        /* ===== 우측: 공지(GitHub 스타일 적용) ===== */
+        .hero-weather h1 { font-size: 7.5rem; font-weight: 100; margin: 0; line-height: 1; }
+        .label_big { font-size: 1.2rem; opacity: 0.6; letter-spacing: 2px; text-transform: uppercase; }
+
+        .weather-details { margin-top: auto; }
+        .hourly-box { display: flex; justify-content: space-between; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+        .hour-item { text-align: center; font-size: 0.9rem; }
+        .rain-val { color: var(--accent); font-size: 0.85rem; font-weight: bold; }
+
+        .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .detail-tile { background: rgba(255,255,255,0.04); padding: 15px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .label { font-size: 0.8rem; opacity: 0.5; letter-spacing: 1px; }
+        .value { font-size: 1.2rem; font-weight: 500; margin-top: 5px; }
+
+        /* 우측: 공지 및 모니터링 */
         .right-col { display: flex; flex-direction: column; gap: 25px; margin-top: 50px; height: calc(100% - 50px); }
-
         .notice-glass { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .notice-container {
-            margin-top: 15px; overflow: hidden; position: relative; flex: 1;
-        }
+        .notice-container { margin-top: 15px; overflow: hidden; position: relative; flex: 1; }
 
-        /* GitHub 스타일 커스텀 오버라이드 */
         .markdown-body {
-            background-color: transparent !important; /* 배경 투명화 */
-            color: #e6edf3 !important;
-            font-family: inherit;
-            position: absolute;
-            width: 100%;
-            will-change: transform;
+            background-color: transparent !important; color: #e6edf3 !important;
+            font-family: inherit; position: absolute; width: 100%; padding-bottom: 100px;
         }
 
-        /* 스크롤 중 가독성을 위한 여백 */
-        .markdown-body { padding-bottom: 100px; }
-
-        /* ===== 서비스 모니터 ===== */
-        .monitor-glass { flex-shrink: 0; height: auto; }
+        .monitor-glass { flex-shrink: 0; }
         .monitor-section { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .svc-card {
             padding: 14px; border-radius: 20px; display: flex; justify-content: space-between;
@@ -96,12 +96,19 @@
     <div class="dashboard">
 
         <div class="left-col">
-            <div class="hero-weather" >
-                <p class="label_big">ULSAN · UNIST</p>
-                <h1 id="temp" style="margin-top:30px;">--°</h1>
-                <p id="desc" style="font-weight: 300; opacity: 0.7; margin-top:30px;" class="label_big">Loading...</p>
+            <div class="hero-weather">
+                <div class="location-header">
+                    <img src="static/hexa_logo_origin_blue2.png" alt="HeXA" class="hexa-logo">
+                    <p class="label_big">ULSAN · UNIST</p>
+                </div>
+                <div class="weather-main">
+                    <div id="weather-icon" class="weather-anim"></div>
+                    <h1 id="temp">--°</h1>
+                </div>
+                <p id="desc" class="label_big" style="margin-top:10px;">Loading...</p>
             </div>
-            <div class="glass" style="margin-top: auto;">
+
+            <div class="glass weather-details">
                 <div class="hourly-box" id="hourly"></div>
                 <div class="detail-grid">
                     <div class="detail-tile"><p class="label">체감 온도</p><p class="value" id="feels">-</p></div>
@@ -134,10 +141,10 @@
     </div>
 
     <script>
-        // DOM 캐시: 반복 조회를 줄여 저사양 환경에서 렌더링/레이아웃 부하를 완화
         const elements = {
             temp: document.getElementById('temp'),
             desc: document.getElementById('desc'),
+            weatherIcon: document.getElementById('weather-icon'),
             feels: document.getElementById('feels'),
             uv: document.getElementById('uv'),
             dust: document.getElementById('dust'),
@@ -156,65 +163,39 @@
         let scrollY = 0;
         let scrollRafId = null;
         let lastFrameTime = 0;
+        const SCROLL_SPEED = 18;
 
-        // 변경 감지 렌더링용 캐시: 데이터가 같으면 DOM 업데이트를 건너뜀
-        let lastNoticeRaw = '';
-        let lastWeatherKey = '';
-        let lastServicesKey = '';
-        let lastSystemKey = '';
-
-        const SCROLL_SPEED_PX_PER_SEC = 16;
+        function getWeatherEmoji(desc) {
+            if (desc.includes('맑음')) return '☀️';
+            if (desc.includes('구름')) return '☁️';
+            if (desc.includes('흐림')) return '🌥️';
+            if (desc.includes('비')) return '🌧️';
+            if (desc.includes('눈')) return '❄️';
+            if (desc.includes('번개')) return '⚡';
+            if (desc.includes('안개')) return '🌫️';
+            return '';
+        }
 
         function autoScrollFrame(timestamp) {
             if (!lastFrameTime) lastFrameTime = timestamp;
-            const deltaSec = (timestamp - lastFrameTime) / 1000;
+            const delta = (timestamp - lastFrameTime) / 1000;
             lastFrameTime = timestamp;
 
             const limit = elements.noticeContent.scrollHeight - elements.noticeContainer.offsetHeight;
             if (limit > 0) {
-                scrollY += SCROLL_SPEED_PX_PER_SEC * deltaSec;
+                scrollY += SCROLL_SPEED * delta;
                 if (scrollY > limit + 60) scrollY = -20;
                 elements.noticeContent.style.transform = `translateY(${-scrollY}px)`;
-            } else {
-                scrollY = 0;
-                elements.noticeContent.style.transform = 'translateY(0px)';
             }
-
             scrollRafId = requestAnimationFrame(autoScrollFrame);
-        }
-
-        function startAutoScroll() {
-            if (scrollRafId) cancelAnimationFrame(scrollRafId);
-            scrollY = 0;
-            lastFrameTime = 0;
-            scrollRafId = requestAnimationFrame(autoScrollFrame);
-        }
-
-        async function fetchJson(url) {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Request failed: ${url}`);
-            return res.json();
         }
 
         async function updateWeather() {
             try {
-                const w = await fetchJson('/api/weather');
-
-                // 변경 감지: 동일 payload면 렌더 스킵해 CPU/레이아웃 비용 절감
-                const weatherKey = JSON.stringify({
-                    temp: w.temp,
-                    desc: w.desc,
-                    feels: w.feels,
-                    uv: w.uv,
-                    dust: w.dust,
-                    wind: w.wind,
-                    hourly: w.hourly
-                });
-                if (weatherKey === lastWeatherKey) return;
-                lastWeatherKey = weatherKey;
-
+                const w = await fetch('/api/weather').then(r => r.json());
                 elements.temp.innerText = w.temp + '°';
                 elements.desc.innerText = w.desc;
+                elements.weatherIcon.innerText = getWeatherEmoji(w.desc);
                 elements.feels.innerText = w.feels;
                 elements.uv.innerText = w.uv;
                 elements.dust.innerText = w.dust;
@@ -232,13 +213,7 @@
 
         async function updateServices() {
             try {
-                const data = await fetchJson('/api/services');
-
-                // 변경 감지: 동일 상태면 카드 재생성을 생략
-                const servicesKey = JSON.stringify(data.services);
-                if (servicesKey === lastServicesKey) return;
-                lastServicesKey = servicesKey;
-
+                const data = await fetch('/api/services').then(r => r.json());
                 elements.services.innerHTML = data.services.map(s => `
                     <div class="svc-card ${s.status === 'Online' ? 'online-bg' : 'offline-bg'}">
                         <span style="font-size: 0.9rem;">${s.name}</span>
@@ -250,14 +225,8 @@
 
         async function updateSystem() {
             try {
-                const data = await fetchJson('/api/system');
-
-                // 변경 감지: 값이 같으면 텍스트 노드 업데이트를 생략
-                const systemKey = JSON.stringify(data.system);
-                if (systemKey === lastSystemKey) return;
-                lastSystemKey = systemKey;
-
-                elements.cpuTemp.innerText = data.system.cpu_temp + '°C';
+                const data = await fetch('/api/system').then(r => r.json());
+                elements.cpuTemp.innerText = (data.system.cpu_temp || '--') + '°C';
                 elements.cpu.innerText = data.system.cpu + '%';
                 elements.ram.innerText = data.system.ram + '%';
                 elements.net.innerText = data.system.ping;
@@ -266,36 +235,25 @@
 
         async function updateNotice() {
             try {
-                const data = await fetchJson('/api/notice');
-
-                // 공지 내용이 바뀐 경우에만 마크다운 렌더링/스크롤 재시작
-                if (data.notice !== lastNoticeRaw) {
+                const data = await fetch('/api/notice').then(r => r.json());
+                if (data.notice) {
                     elements.noticeContent.innerHTML = marked.parse(data.notice);
-                    lastNoticeRaw = data.notice;
-                    setTimeout(startAutoScroll, 1500);
+                    scrollY = 0;
+                    if (!scrollRafId) scrollRafId = requestAnimationFrame(autoScrollFrame);
                 }
             } catch (e) { console.error(e); }
         }
 
-        // API 분리 후 주기 분리:
-        // - weather: 외부 스크래핑 비용이 커서 5분
-        // - services: 상태 확인 목적이라 30초
-        // - system: 로컬 지표 중심이라 5초
-        // - notice: 변경 빈도 낮아 1시간
-        updateWeather();
-        updateServices();
-        updateSystem();
-        updateNotice();
-
-        setInterval(updateWeather, 300000);
-        setInterval(updateServices, 30000);
-        setInterval(updateSystem, 5000);
-        setInterval(updateNotice, 3600000);
-
+        // 초기 실행 및 주기 설정
         setInterval(() => {
-            const now = new Date();
-            elements.clock.innerText = now.toTimeString().split(' ')[0];
+            elements.clock.innerText = new Date().toTimeString().split(' ')[0];
         }, 1000);
+
+        updateWeather(); updateServices(); updateSystem(); updateNotice();
+        setInterval(updateWeather, 300000); // 5분
+        setInterval(updateServices, 30000); // 30초
+        setInterval(updateSystem, 5000);    // 5초
+        setInterval(updateNotice, 3600000); // 1시간
     </script>
 </body>
 </html>
