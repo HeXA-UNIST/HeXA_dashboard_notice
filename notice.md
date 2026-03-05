@@ -1,27 +1,17 @@
-# HeXA Dashboard Test
+# HeXA 공지사항
 
 Hello HeXA!
 
 ---
 
-### 📢 Test_notice
+### 📢 일정 공지
 
-1. **Test_title_1**
-    * asdf
-    * qwer
-    * zxcv
+1. **개강총회**
+    * 일시: 03/12 20:00
+    * 장소: 114-110
 
-2. **Test_title_2**
-    * asdf
-    * qwer
-    * zxcv
+2. **MT**
+    * 일시: 03/21-03/22
+    * 장소: 부산
 
 ---
-
-### 💻 Test_table
-
-| col1 | col2 | col3 |
-| :--- | :--- | :--- |
-| 03/11 | test_topic_1 | name1 |
-| 03/12 | test_topic_2 | name2 |
-| 03/13 | test_topic_3 | name3 |
